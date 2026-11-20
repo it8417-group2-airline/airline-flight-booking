@@ -166,3 +166,61 @@ Why: links ONE booking to ONE flight (Appendix I). fare\_paid is stored because
 
 &#x20;    the price paid must not change if the flight's base\_fare changes later.
 
+SCHEMA: regional_partner  (deliberately less normalised – 4 tables)
+
+TABLE: traveler                                   (= passenger)
+- traveler_code      VARCHAR(10)    PK            (text key, e.g. TRV-0001)
+- full_name          VARCHAR(120)   NOT NULL      (one field, not first/last)
+- email_address      VARCHAR(150)                 (NOT unique -> duplicates possible)
+- birth_date_text    VARCHAR(20)                  (date stored as TEXT, mixed formats)
+- country            VARCHAR(60)                  (free text: 'Bahrain', 'BAHRAIN', 'KSA')
+- loyalty_tier       VARCHAR(10)                  (Blue, Silver, Gold)
+- registered_on      DATE
+- mobile_no          VARCHAR(20)    (operational only – ETL drops)
+- sms_opt_in         CHAR(1)        (operational only – ETL drops)  ('Y'/'N')
+- last_modified      TIMESTAMP      DEFAULT now()
+Why: different key type (text), single name field, weak data typing.
+
+TABLE: route                                      (= flight)
+- route_id           INTEGER        PK  identity starting at 5001
+- route_code         VARCHAR(10)    NOT NULL      (e.g. PX210)
+- origin_city        VARCHAR(60)    NOT NULL      (city NAME, no airport table)
+- destination_city   VARCHAR(60)    NOT NULL
+- departure_date     DATE           NOT NULL
+- departure_time     TIME           NOT NULL
+- arrival_time       TIME           NOT NULL
+- delay_minutes      INTEGER                      (instead of actual times)
+- route_status       VARCHAR(15)                  (free text: 'operated', 'Cancelled')
+- fare_amount        NUMERIC(9,3)   NOT NULL      (standard fare, BHD)
+- aircraft_reg       VARCHAR(10)    (operational only – ETL drops)
+- ops_remark         TEXT           (operational only – ETL drops)
+- last_modified      TIMESTAMP      DEFAULT now()
+Why: no airport lookup; date/time split; delay stored as minutes.
+
+TABLE: reservation                                (= booking)
+- reservation_no     BIGINT         PK            (e.g. 900000001)
+- pnr                VARCHAR(8)     NOT NULL
+- traveler_code      VARCHAR(10)    FK -> traveler.traveler_code
+- travel_class       VARCHAR(20)                  (ONE text field, no cabin table)
+- reserved_at        TIMESTAMP      DEFAULT now()
+- reservation_status VARCHAR(15)    NOT NULL      (inconsistent casing)
+- sales_channel      VARCHAR(20)
+- checkin_kiosk_code VARCHAR(10)    (operational only – ETL drops, from Appendix I)
+- agent_terminal     VARCHAR(10)    (operational only – ETL drops)
+- last_modified      TIMESTAMP      DEFAULT now()
+Why: class as free text means typos are possible -> ETL must map it.
+
+TABLE: fare_line                                  (= ticket)
+- fare_line_id       INTEGER        PK  identity
+- reservation_no     BIGINT         FK -> reservation.reservation_no  (ON DELETE CASCADE)
+- route_id           INTEGER        FK -> route.route_id
+- fare_amount        NUMERIC(9,3)                 (COPIED from route.fare_amount = denormalised)
+- tax_amount         NUMERIC(9,3)
+- currency           VARCHAR(3)     NOT NULL      ('BHD', 'bhd', 'USD')
+- seat_label         VARCHAR(4)
+- line_status        VARCHAR(12)
+- promo_code         VARCHAR(12)    (operational only – ETL drops)
+- legacy_fare_basis  VARCHAR(10)    (operational only – ETL drops)
+- last_modified      TIMESTAMP      DEFAULT now()
+Why: fare copied from route -> if the route price changes, old lines keep
+     the old price (update anomaly). ETL reconciles it against mainline ticket.fare_paid.
