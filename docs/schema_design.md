@@ -1,0 +1,168 @@
+SCHEMA: mainline\_carrier  (normalised – 6 tables)
+
+
+
+TABLE: airport
+
+\- airport\_code       CHAR(3)        PK            (IATA code, e.g. BAH)
+
+\- airport\_name       VARCHAR(120)   NOT NULL
+
+\- city               VARCHAR(80)    NOT NULL
+
+\- country\_code       CHAR(2)        NOT NULL      (e.g. BH)
+
+\- is\_hub             BOOLEAN                      (TRUE for BAH)
+
+\- timezone\_name      VARCHAR(40)    (operational only – ETL drops)
+
+\- terminal\_count     SMALLINT       (operational only – ETL drops)
+
+Why: airport details stored once; flights point to them by code.
+
+
+
+TABLE: cabin\_class
+
+\- cabin\_class\_id     SMALLINT       PK
+
+\- cabin\_code         CHAR(1)        UNIQUE        (Y, W, J, F)
+
+\- cabin\_name         VARCHAR(30)    UNIQUE
+
+\- fare\_multiplier    NUMERIC(4,2)   NOT NULL      (1.00, 1.45, 2.60, 4.10)
+
+\- lounge\_access\_code VARCHAR(10)    (operational only – ETL drops)
+
+\- display\_colour     VARCHAR(7)     (operational only – ETL drops)
+
+Why: "Business" stored once, so no spelling mistakes (regional schema uses free text instead).
+
+
+
+TABLE: passenger
+
+\- passenger\_id       SERIAL         PK
+
+\- first\_name         VARCHAR(60)    NOT NULL
+
+\- last\_name          VARCHAR(60)    NOT NULL
+
+\- email              VARCHAR(120)   UNIQUE
+
+\- date\_of\_birth      DATE
+
+\- nationality        CHAR(2)
+
+\- frequent\_flyer\_no  VARCHAR(12)
+
+\- phone              VARCHAR(20)    (operational only – ETL drops)
+
+\- passport\_scan\_ref  VARCHAR(40)    (operational only – ETL drops)
+
+\- created\_at         TIMESTAMPTZ    DEFAULT now()
+
+\- updated\_at         TIMESTAMPTZ    DEFAULT now()
+
+Why: name split into first/last (regional uses one full\_name field).
+
+
+
+TABLE: flight
+
+\- flight\_id            SERIAL         PK
+
+\- flight\_number        VARCHAR(8)     NOT NULL      (e.g. DM104)
+
+\- origin\_code          CHAR(3)        FK -> airport.airport\_code
+
+\- destination\_code     CHAR(3)        FK -> airport.airport\_code
+
+\- scheduled\_departure  TIMESTAMPTZ    NOT NULL
+
+\- scheduled\_arrival    TIMESTAMPTZ    NOT NULL
+
+\- actual\_departure     TIMESTAMPTZ                  (NULL until it departs)
+
+\- actual\_arrival       TIMESTAMPTZ
+
+\- flight\_status        VARCHAR(10)    (SCHEDULED, LANDED, DELAYED, CANCELLED, DIVERTED)
+
+\- aircraft\_type        VARCHAR(20)
+
+\- base\_fare            NUMERIC(10,3)  NOT NULL      (BHD, economy price)
+
+\- notes                TEXT                         (delay/disruption notes -> pgvector)
+
+\- crew\_manifest\_ref    VARCHAR(30)    (operational only – ETL drops, from Appendix I)
+
+\- gate\_code            VARCHAR(5)     (operational only – ETL drops)
+
+\- review\_count         INTEGER        DEFAULT 0     (Flow 4 – written by Member 3)
+
+\- avg\_rating           NUMERIC(3,2)                 (Flow 4)
+
+\- photo\_like\_total     INTEGER        DEFAULT 0     (Flow 4)
+
+\- updated\_at           TIMESTAMPTZ    DEFAULT now()
+
+Why: two FKs to airport (from/to); actual times let us calculate delays.
+
+
+
+TABLE: booking
+
+\- booking\_id         SERIAL         PK
+
+\- booking\_reference  CHAR(6)        UNIQUE NOT NULL  (e.g. K7XQ2M)
+
+\- passenger\_id       INTEGER        FK -> passenger.passenger\_id
+
+\- booking\_date       TIMESTAMPTZ    DEFAULT now()
+
+\- booking\_status     VARCHAR(10)    (CONFIRMED, COMPLETED, CANCELLED)
+
+\- booking\_channel    VARCHAR(6)     (WEB, APP, AGENT)
+
+\- payment\_method     VARCHAR(20)
+
+\- session\_ip         INET           (operational only – ETL drops)
+
+\- agent\_remarks      TEXT           (operational only – ETL drops)
+
+\- updated\_at         TIMESTAMPTZ    DEFAULT now()
+
+Why: one booking = one purchase by one passenger; can hold several tickets.
+
+
+
+TABLE: ticket
+
+\- ticket\_id           SERIAL         PK
+
+\- ticket\_number       VARCHAR(14)    UNIQUE NOT NULL
+
+\- booking\_id          INTEGER        FK -> booking.booking\_id  (ON DELETE CASCADE)
+
+\- flight\_id           INTEGER        FK -> flight.flight\_id
+
+\- cabin\_class\_id      SMALLINT       FK -> cabin\_class.cabin\_class\_id
+
+\- seat\_number         VARCHAR(4)                    (e.g. 21C)
+
+\- fare\_paid           NUMERIC(10,3)  NOT NULL       (price at time of sale)
+
+\- ticket\_status       VARCHAR(8)     (ISSUED, USED, REFUNDED, VOID)
+
+\- baggage\_tag\_ref     VARCHAR(20)    (operational only – ETL drops)
+
+\- issued\_terminal\_id  VARCHAR(10)    (operational only – ETL drops)
+
+\- updated\_at          TIMESTAMPTZ    DEFAULT now()
+
+\- UNIQUE (flight\_id, seat\_number)                   (no double-booked seats)
+
+Why: links ONE booking to ONE flight (Appendix I). fare\_paid is stored because
+
+&#x20;    the price paid must not change if the flight's base\_fare changes later.
+
