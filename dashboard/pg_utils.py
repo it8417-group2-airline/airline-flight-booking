@@ -34,7 +34,11 @@ def _connect() -> psycopg.Connection:
     # autocommit: every SELECT sees the latest data (live dashboard);
     # writes that must be atomic use `with conn.transaction():`
     # prepare_threshold=None: compatible with Supabase's pgbouncer pooler
-    return psycopg.connect(_database_url(), autocommit=True, prepare_threshold=None, connect_timeout=10)
+    conn = psycopg.connect(_database_url(), autocommit=True, prepare_threshold=None, connect_timeout=10)
+    # Supabase stores and returns times in UTC. Switch this session to Bahrain time (UTC+3)
+    # so every timestamp, to_char() label and DataFrame value on the dashboard is local time.
+    conn.execute("SET TIME ZONE 'Asia/Bahrain'")
+    return conn
 
 
 def get_pg_conn() -> psycopg.Connection:

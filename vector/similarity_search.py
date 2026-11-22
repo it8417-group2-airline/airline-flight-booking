@@ -42,6 +42,7 @@ def main() -> None:
     args = ap.parse_args()
 
     with psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None) as conn:
+        conn.execute("SET TIME ZONE 'Asia/Bahrain'")   # Supabase runs in UTC; show Bahrain time (UTC+3)
         rows = search(conn, args.query, args.k, args.max_distance)
 
     print(f'\nTop {len(rows)} matches for: "{args.query}"\n')
