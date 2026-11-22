@@ -7,14 +7,13 @@ Steps
        b) MongoDB passenger_feedback.reviews[].comment  (optional, --include-mongo)
   2. SKIP     rows whose md5(text) is already stored (incremental - only new or
               changed notes cost an API call)
-  3. EMBED    in batches with the configured provider (1536 dims)
+  3. EMBED    in batches with Gemini gemini-embedding-001 (1536 dims)
   4. LOAD     upsert into vector_store.flight_note_embeddings
               (ON CONFLICT ... DO UPDATE, so re-running is safe / idempotent)
 
 Usage
   export DATABASE_URL="postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
-  export EMBED_PROVIDER=openai           # or gemini / local
-  export OPENAI_API_KEY=sk-...           # or GEMINI_API_KEY=...
+  export GEMINI_API_KEY=...              # PowerShell: $env:GEMINI_API_KEY = "..."
   python vector/embed_flight_notes.py                  # flight notes only
   python vector/embed_flight_notes.py --include-mongo  # + MongoDB review text (needs MONGO_URI)
   python vector/embed_flight_notes.py --rebuild        # wipe and re-embed everything
@@ -31,7 +30,7 @@ from pathlib import Path
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from embeddings import embed_texts, get_provider, model_name, to_pgvector  # noqa: E402
+from embeddings import embed_texts, model_name, to_pgvector  # noqa: E402
 
 BATCH_SIZE = 50
 
@@ -95,8 +94,8 @@ def existing_hashes(conn) -> dict:
 
 def run_embedding(conn, include_mongo: bool = False, rebuild: bool = False, log=print) -> dict:
     """Run Flow 5 end to end on an open psycopg connection. Also called by the dashboard."""
-    provider, model = get_provider(), model_name()
-    log(f"Provider: {provider}  model: {model}")
+    model = model_name()
+    log(f"Model: {model}")
     if rebuild:
         conn.execute("TRUNCATE vector_store.flight_note_embeddings")
         log("  rebuilt: table truncated")
@@ -126,8 +125,7 @@ def run_embedding(conn, include_mongo: bool = False, rebuild: bool = False, log=
                 ])
         loaded += len(batch)
         log(f"3-4. Embedded and loaded {loaded}/{len(todo)}")
-        if provider == "gemini":
-            time.sleep(1)   # stay well inside the free-tier rate limit
+        time.sleep(1)   # stay well inside the free-tier rate limit
 
     total = conn.execute("SELECT count(*) FROM vector_store.flight_note_embeddings").fetchone()[0]
     log(f"Done. vector_store.flight_note_embeddings now holds {total} vectors.")

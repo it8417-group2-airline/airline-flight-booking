@@ -18,7 +18,7 @@ from pg_utils import get_pg_conn, query_df, scalar
 
 # make the shared vector/ modules importable (repo_root/vector)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "vector"))
-from embeddings import embed_query, get_provider, model_name, to_pgvector  # noqa: E402
+from embeddings import embed_query, model_name, to_pgvector  # noqa: E402
 from embed_flight_notes import run_embedding  # noqa: E402
 
 st.set_page_config(page_title="Semantic search", page_icon="🔎", layout="wide")
@@ -36,7 +36,6 @@ EXAMPLES = [
 ]
 
 # ------------------------------------------------------------------ status + Flow 5 button
-provider = get_provider()
 c1, c2, c3, c4 = st.columns(4)
 with_notes = scalar("SELECT count(*) FROM mainline_carrier.flight WHERE notes IS NOT NULL AND btrim(notes) <> ''")
 embedded = scalar("SELECT count(DISTINCT flight_id) FROM vector_store.flight_note_embeddings "
@@ -49,10 +48,12 @@ stale = scalar("""SELECT count(*) FROM mainline_carrier.flight f
 c1.metric("Flights with notes", with_notes)
 c2.metric("Embedded", embedded)
 c3.metric("New / changed, not embedded", stale)
-c4.metric("Embedding model", model_name(provider))
-if provider == "local":
-    st.warning("EMBED_PROVIDER = local (offline test mode): matches shared words only. "
-               "Switch to openai or gemini in secrets for real semantic search.")
+c4.metric("Embedding model", model_name())
+# Vectors from different models cannot be compared, so warn if any stored vector used another model
+other_models = scalar("SELECT count(*) FROM vector_store.flight_note_embeddings WHERE model_name <> %s", (model_name(),))
+if other_models:
+    st.warning(f"{other_models} stored vectors were made with a different model. "
+               "Run the Flow 5 pipeline below: it re-embeds any vector whose model does not match.")
 
 with st.expander("⚙️ Flow 5 — embed new or changed notes"):
     st.write("Reads `mainline_carrier.flight.notes`, skips text whose md5 hash is already stored, "
