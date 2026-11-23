@@ -80,6 +80,9 @@ SELECT * FROM regional_partner.v_revenue_per_cabin ORDER BY revenue_bhd DESC;
 -- Q3. On-time performance per route (regional) - the same question as Q1
 --     on the other schema. It has no actual times (only delay_minutes)
 --     and messy city names, which are tidied on the fly.
+--     Every count uses ALL operated flights, so the % always matches the
+--     numbers shown. A NULL delay_minutes (not reported) is counted as
+--     "not confirmed on time" and listed in delay_not_reported.
 -- ---------------------------------------------------------------------
 DROP VIEW IF EXISTS regional_partner.v_route_performance;
 CREATE VIEW regional_partner.v_route_performance AS
@@ -96,8 +99,9 @@ SELECT origin_city || ' -> ' || destination_city                    AS route_nam
        count(*)                                                      AS flights_flown,
        count(*) FILTER (WHERE delay_minutes <= 15)                   AS on_time_flights,
        round(100.0 * count(*) FILTER (WHERE delay_minutes <= 15)
-             / NULLIF(count(delay_minutes), 0), 1)                   AS on_time_pct,
-       round(avg(delay_minutes), 1)                                  AS avg_delay_min
+             / count(*), 1)                                          AS on_time_pct,
+       round(avg(delay_minutes), 1)                                  AS avg_delay_min,
+       count(*) - count(delay_minutes)                               AS delay_not_reported
 FROM clean_route
 GROUP BY origin_city, destination_city;
 
