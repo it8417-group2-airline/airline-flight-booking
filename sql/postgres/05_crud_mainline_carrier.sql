@@ -25,7 +25,7 @@ FROM mainline_carrier.passenger
 WHERE email = 'abrar.alawadhi@example.com'
 RETURNING booking_id, booking_reference, booking_status;
 
--- C3. Add a ticket to the booking for the next scheduled flight, in Economy.
+-- C3. Add a ticket to the booking for the next flight that has not departed yet, in Economy.
 --     Normalised design: the price is CALCULATED from flight.base_fare
 --     x cabin_class.fare_multiplier, not typed in by hand.
 INSERT INTO mainline_carrier.ticket
@@ -37,6 +37,7 @@ WHERE b.booking_reference = 'ABR001'
   AND c.cabin_code = 'Y'
   AND f.flight_id = (SELECT flight_id FROM mainline_carrier.flight
                      WHERE flight_status = 'SCHEDULED'
+                       AND scheduled_departure > now()   -- only flights that have not left yet
                      ORDER BY scheduled_departure LIMIT 1)
 RETURNING ticket_id, ticket_number, flight_id, seat_number, fare_paid;
 
@@ -66,6 +67,7 @@ FROM mainline_carrier.flight f
 LEFT JOIN mainline_carrier.ticket t
        ON t.flight_id = f.flight_id AND t.ticket_status <> 'REFUNDED'
 WHERE f.flight_status = 'SCHEDULED'
+  AND f.scheduled_departure > now()   -- only flights that have not left yet
 GROUP BY f.flight_id
 ORDER BY f.scheduled_departure
 LIMIT 10;

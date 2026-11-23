@@ -31,7 +31,8 @@ FROM regional_partner.traveler
 WHERE email_address = 'Eman.Khamdan@example.com'
 RETURNING reservation_no, pnr, travel_class;
 
--- C3. Add a fare line for the next upcoming route. The fare is COPIED
+-- C3. Add a fare line for the next route that has not departed yet
+--     (route times are Bahrain local time, Supabase's clock is UTC). The fare is COPIED
 --     from route.fare_amount into fare_line.fare_amount (denormalised).
 INSERT INTO regional_partner.fare_line
        (reservation_no, route_id, fare_amount, tax_amount, currency, seat_label, line_status)
@@ -40,7 +41,7 @@ SELECT r.reservation_no, rt.route_id, rt.fare_amount, round(rt.fare_amount * 0.1
 FROM regional_partner.reservation r, regional_partner.route rt
 WHERE r.pnr = 'EKHA01'
   AND rt.route_id = (SELECT route_id FROM regional_partner.route
-                     WHERE departure_date >= CURRENT_DATE
+                     WHERE departure_date + departure_time > (now() AT TIME ZONE 'Asia/Bahrain')
                      ORDER BY departure_date, departure_time LIMIT 1)
 RETURNING fare_line_id, route_id, fare_amount;
 
