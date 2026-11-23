@@ -94,11 +94,19 @@ SEARCH_SQL = "SELECT * FROM vector_store.match_flight_notes(%s::vector, %s, %s)"
 if go and query.strip():
     with st.spinner("Embedding the query and searching…"):
         qvec = embed_query(query.strip())
-        results = query_df(SEARCH_SQL, (to_pgvector(qvec), k, max_dist))
+        found = query_df(SEARCH_SQL, (to_pgvector(qvec), k, max_dist))
+    # keep the results in session_state, so they stay on screen when the
+    # user clicks anything else on the page (Streamlit re-runs the script)
+    st.session_state["search_results"] = found
+    st.session_state["search_query"] = query.strip()
 
+results = st.session_state.get("search_results")
+if results is not None:
+    st.caption(f'Results for: "{st.session_state.get("search_query", "")}"')
     if results.empty:
-        st.info("No notes within that distance. Raise the max distance or rephrase.")
+        st.info("No past flights within that distance. Raise the max distance or rephrase.")
     else:
+        results = results.copy()
         for c in ("similarity", "cosine_distance", "revenue_bhd", "avg_rating"):
             results[c] = pd.to_numeric(results[c], errors="coerce")
         st.subheader(f"Top {len(results)} similar past flights")
@@ -128,6 +136,7 @@ if go and query.strip():
     with st.expander("SQL behind this search"):
         st.code("SELECT * FROM vector_store.match_flight_notes(:query_vector, :k, :max_distance);\n\n"
                 "-- inside the function:\n"
-                "-- 1) ORDER BY embedding <=> query_vector   (cosine distance, HNSW index)\n"
+                "-- 1) ORDER BY embedding <=> query_vector   (cosine distance, HNSW index),\n"
+                "--    only flights that already departed (scheduled_departure < now())\n"
                 "-- 2) keep best match per flight\n"
                 "-- 3) JOIN mainline_carrier.flight, airport, ticket  (enrichment)", language="sql")
