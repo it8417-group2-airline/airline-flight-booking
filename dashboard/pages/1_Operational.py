@@ -255,7 +255,7 @@ else:
                route_code || '  ' || origin_city || '→' || destination_city || '  ' ||
                to_char(departure_date, 'DD Mon') || ' ' || to_char(departure_time, 'HH24:MI') AS label
         FROM regional_partner.route
-        WHERE departure_date >= CURRENT_DATE
+        WHERE departure_date + departure_time > (now() AT TIME ZONE 'Asia/Bahrain')
         ORDER BY departure_date, departure_time""")
     if routes.empty:
         st.warning("No future routes in regional_partner.route — add one to simulate reservations.")
