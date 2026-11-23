@@ -1,4 +1,7 @@
 -- =====================================================================
+-- !! WARNING: this file DROPS and re-creates vector_store.flight_note_embeddings.
+-- !! Re-running it on Supabase DELETES all stored embeddings. To change only the
+-- !! search function, run vector/03_update_match_function.sql instead.
 -- File   : vector/01_pgvector_setup.sql   (Abrar)
 -- Purpose: Vector role (pgvector) - storage, index and search function.
 --   Flow 5 : flight.notes (and optionally MongoDB review text) is embedded
@@ -31,7 +34,7 @@ CREATE TABLE vector_store.flight_note_embeddings (
   source_ref    VARCHAR(64)  NOT NULL DEFAULT '',      -- '' for flight notes; Mongo review id otherwise
   notes         TEXT         NOT NULL,                 -- the exact text that was embedded
   content_hash  CHAR(32)     NOT NULL,                 -- md5(notes): skip re-embedding unchanged text
-  embedding     vector(1536) NOT NULL,                 -- OpenAI text-embedding-3-small / Gemini @1536
+  embedding     vector(1536) NOT NULL,                 -- Gemini gemini-embedding-001, 1536 dimensions
   model_name    VARCHAR(60)  NOT NULL,
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
   CONSTRAINT uq_embedding_source UNIQUE (flight_id, source_type, source_ref)
@@ -81,6 +84,8 @@ LANGUAGE sql STABLE AS $$
     SELECT e.flight_id, e.source_type, e.notes,
            e.embedding <=> query_embedding AS dist
     FROM vector_store.flight_note_embeddings e
+    JOIN mainline_carrier.flight pf ON pf.flight_id = e.flight_id
+    WHERE pf.scheduled_departure < now()  -- only flights that already happened ("similar PAST flights")
     ORDER BY e.embedding <=> query_embedding
     LIMIT match_count * 4                 -- over-fetch, then keep best hit per flight
   ),
@@ -93,7 +98,7 @@ LANGUAGE sql STABLE AS $$
   ticket_stats AS (                       -- 2) relational enrichment (join back)
     SELECT t.flight_id,
            count(*) FILTER (WHERE t.ticket_status <> 'REFUNDED') AS passengers,
-           count(DISTINCT t.booking_id)                          AS bookings,
+           count(DISTINCT t.booking_id) FILTER (WHERE t.ticket_status <> 'REFUNDED') AS bookings,
            sum(t.fare_paid) FILTER (WHERE t.ticket_status <> 'REFUNDED') AS revenue_bhd
     FROM mainline_carrier.ticket t
     WHERE t.flight_id IN (SELECT b.flight_id FROM best_per_flight b)
@@ -104,7 +109,7 @@ LANGUAGE sql STABLE AS $$
          ao.city || ' (' || f.origin_code || ') -> ' || ad.city || ' (' || f.destination_code || ')',
          f.scheduled_departure,
          f.flight_status,
-         (EXTRACT(EPOCH FROM (f.actual_departure - f.scheduled_departure)) / 60)::int,
+         GREATEST((EXTRACT(EPOCH FROM (f.actual_departure - f.scheduled_departure)) / 60)::int, 0),  -- early = 0 min delay
          coalesce(ts.passengers, 0),
          coalesce(ts.bookings, 0),
          coalesce(ts.revenue_bhd, 0),
