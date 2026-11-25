@@ -1,6 +1,8 @@
 -- =====================================================================
--- File   : 03_mainline_carrier_seed.sql   (Abrar)
+-- File   : sql/postgres/03_mainline_carrier_seed.sql   (Abrar - Member 1)
 -- Purpose: Realistic sample data for mainline_carrier.
+-- !! Run only on an EMPTY schema (right after 01). On live data it fails on
+-- !! duplicate keys, by design.
 -- PLANTED DATA-QUALITY ISSUES (for Member 2's ETL cleansing):
 --   * passenger 41 = duplicate of passenger 1 (UPPER-case name, different email casing)
 --   * passenger 42 = duplicate of passenger 5 (lower-case name, upper-case email)
@@ -8,6 +10,13 @@
 --   * flights 9 and 31 have NULL notes; flight 23 has NULL actual_arrival
 --   * some bookings have NULL payment_method
 --   * the same people also exist in regional_partner.traveler (cross-schema duplicates)
+--   * double bookings: passenger 17 holds two live tickets on flight 93 (tickets 98, 165,
+--     bookings 78 and 135) and passenger 24 two on flight 45 (tickets 73, 75, bookings 59
+--     and 60) - the ETL should keep one seat per passenger per flight
+-- DESIGN NOTES (not errors):
+--   * ticket.fare_paid = base_fare x fare_multiplier x 0.90-1.15: the price paid varies
+--     with the sale date (early-bird / last-minute). The CRUD script and the dashboard
+--     booking form charge the exact list price (factor 1.00).
 -- Data snapshot date: 20 Nov 2026. Every booking_date is before that date and before its flight.
 -- =====================================================================
 SET search_path TO mainline_carrier, public;
