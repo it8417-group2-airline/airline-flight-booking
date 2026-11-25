@@ -1,15 +1,19 @@
 -- =====================================================================
--- !! WARNING: this file DROPS and re-creates vector_store.flight_note_embeddings.
--- !! Re-running it on Supabase DELETES all stored embeddings. To change only the
--- !! search function, run vector/03_update_match_function.sql instead.
--- File   : vector/01_pgvector_setup.sql   (Abrar)
+-- File   : vector/01_pgvector_setup.sql   (Abrar - Member 1)
 -- Purpose: Vector role (pgvector) - storage, index and search function.
 --   Flow 5 : flight.notes (and optionally MongoDB review text) is embedded
 --            by embed_flight_notes.py and loaded into flight_note_embeddings.
 --   Flow 6 : match_flight_notes() finds the nearest notes by cosine
 --            distance and ENRICHES them with relational data joined back
 --            from mainline_carrier (flight, airport, ticket, booking).
--- Run AFTER sql/postgres/01..08.
+-- Run order: sql/postgres/01-04, 07, then THIS file, then sql/postgres/09
+--            and python vector/embed_flight_notes.py  (full order: README.md).
+-- If you ever re-run sql/postgres/01, re-run 03, 07 and 09 too (01 drops the
+-- views and close_departed_flights(); it restores this table's foreign key).
+--
+-- !! WARNING: this file DROPS and re-creates vector_store.flight_note_embeddings.
+-- !! Re-running it on Supabase DELETES all stored embeddings. To change only the
+-- !! search function, run vector/03_update_match_function.sql instead.
 -- =====================================================================
 
 -- On Supabase you can also enable it in Dashboard -> Database -> Extensions.
