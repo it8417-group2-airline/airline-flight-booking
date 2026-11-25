@@ -1,5 +1,6 @@
 """
-Page 4 - Semantic search (PostgreSQL + pgvector)              Owner:(Abrar)
+dashboard/pages/4_Semantic_Search.py  (Abrar - Member 1)
+Page 4 - Semantic search (PostgreSQL + pgvector)
 
 Brief requirements covered on this page
   * A working semantic-search box backed by pgvector         (Flow 6)
@@ -14,12 +15,12 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from pg_utils import get_pg_conn, query_df, scalar
+from pg_utils import new_pg_conn, query_df, scalar
 
 # make the shared vector/ modules importable (repo_root/vector)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "vector"))
 from embeddings import embed_query, model_name, to_pgvector  # noqa: E402
-from embed_flight_notes import run_embedding  # noqa: E402
+from embed_flight_notes import mongo_settings, run_embedding  # noqa: E402
 
 st.set_page_config(page_title="Semantic search", page_icon="🔎", layout="wide")
 st.title("🔎 Semantic search over flight disruption notes")
@@ -58,13 +59,26 @@ if other_models:
 with st.expander("⚙️ Flow 5 — embed new or changed notes"):
     st.write("Reads `mainline_carrier.flight.notes`, skips text whose md5 hash is already stored, "
              "embeds the rest and upserts into `vector_store.flight_note_embeddings`.")
-    include_mongo = st.checkbox("Also embed MongoDB review comments (passenger_feedback.reviews[].comment)")
+    mongo_uri, mongo_db = mongo_settings()
+    include_mongo = st.checkbox("Also embed MongoDB review comments (passenger_feedback.reviews[].comment)",
+                                disabled=not mongo_uri,
+                                help=None if mongo_uri else "Add MONGO_URI (or [mongo] uri) to the secrets first.")
+    if mongo_uri:
+        st.caption(f"MongoDB database: `{mongo_db}` · collection `passenger_feedback`")
+    else:
+        st.caption("MongoDB is not configured on this deployment (no `MONGO_URI` / `[mongo] uri` secret), "
+                   "so only flight notes are embedded.")
     if st.button("Run embedding pipeline"):
         log = []
-        with st.spinner("Embedding…"):
-            result = run_embedding(get_pg_conn(), include_mongo=include_mongo, log=log.append)
-        st.code("\n".join(log))
-        st.success(f"Embedded {result['embedded']} text(s); table now holds {result['total']} vectors.")
+        try:
+            with st.spinner("Embedding…"), new_pg_conn(autocommit=True) as conn:
+                result = run_embedding(conn, include_mongo=include_mongo, log=log.append)
+        except Exception as exc:               # API key missing, network, MongoDB down ...
+            st.code("\n".join(log) or "(no output)")
+            st.error(f"Embedding pipeline stopped: {exc}")
+        else:
+            st.code("\n".join(log))
+            st.success(f"Embedded {result['embedded']} text(s); table now holds {result['total']} vectors.")
 
 st.divider()
 
@@ -79,7 +93,7 @@ def use_example(text: str) -> None:
 
 st.write("Try an example:")
 ex_cols = st.columns(len(EXAMPLES))
-for col, ex in zip(ex_cols, EXAMPLES):
+for col, ex in zip(ex_cols, EXAMPLES, strict=True):
     col.button(ex, on_click=use_example, args=(ex,), width="stretch")
 
 with st.form("search"):
@@ -92,13 +106,17 @@ with st.form("search"):
 SEARCH_SQL = "SELECT * FROM vector_store.match_flight_notes(%s::vector, %s, %s)"
 
 if go and query.strip():
-    with st.spinner("Embedding the query and searching…"):
-        qvec = embed_query(query.strip())
-        found = query_df(SEARCH_SQL, (to_pgvector(qvec), k, max_dist))
-    # keep the results in session_state, so they stay on screen when the
-    # user clicks anything else on the page (Streamlit re-runs the script)
-    st.session_state["search_results"] = found
-    st.session_state["search_query"] = query.strip()
+    try:
+        with st.spinner("Embedding the query and searching…"):
+            qvec = embed_query(query.strip())
+            found = query_df(SEARCH_SQL, (to_pgvector(qvec), k, max_dist))
+    except Exception as exc:                   # e.g. GEMINI_API_KEY missing or quota reached
+        st.error(f"Search failed: {exc}")
+    else:
+        # keep the results in session_state, so they stay on screen when the
+        # user clicks anything else on the page (Streamlit re-runs the script)
+        st.session_state["search_results"] = found
+        st.session_state["search_query"] = query.strip()
 
 results = st.session_state.get("search_results")
 if results is not None:

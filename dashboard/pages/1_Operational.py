@@ -1,5 +1,6 @@
 """
-Page 1 - Operational database (PostgreSQL, both schemas)      Owner:(Abrar)
+dashboard/pages/1_Operational.py  (Abrar - Member 1)
+Page 1 - Operational database (PostgreSQL, both schemas)
 
 Brief requirements covered on this page
   * View into the operational database - BOTH schemas
@@ -10,18 +11,23 @@ Brief requirements covered on this page
 from __future__ import annotations
 
 import random
-import string
 import time
 
 import pandas as pd
+import psycopg
 import streamlit as st
 
-from pg_utils import get_pg_conn, query_df, scalar
+from pg_utils import new_pg_conn, query_df, scalar
 
 st.set_page_config(page_title="Operational DB", page_icon="✈️", layout="wide")
 st.title("✈️ Operational database — PostgreSQL")
 st.caption("Live view of the two structurally different operational schemas on Supabase: "
            "`mainline_carrier` (normalised) and `regional_partner` (denormalised).")
+
+# regional_partner has no cabin table: fare_line.fare_amount = route.fare_amount x this
+# factor, copied at sale time (same factors as the seed data in 04 and mainline cabin_class)
+REGIONAL_CLASS_FACTOR = {"Economy": 1.00, "Premium Economy": 1.45, "Business": 2.60}
+MAX_ATTEMPTS = 3   # retry a booking if a random reference / seat / key was taken at the same moment
 
 SCHEMA_TABLES = {
     "mainline_carrier": ["passenger", "flight", "booking", "ticket", "airport", "cabin_class"],
@@ -59,7 +65,7 @@ if view in ("Mainline carrier", "Regional partner"):
     schema = "mainline_carrier" if view == "Mainline carrier" else "regional_partner"
     counts = table_counts(schema)
     cols = st.columns(len(counts))
-    for col, (t, n) in zip(cols, counts.items()):
+    for col, (t, n) in zip(cols, counts.items(), strict=True):
         col.metric(t, n)
 
     tab_browse, tab_perf, tab_query = st.tabs(["Browse tables", "On-time performance", "Business query"])
@@ -179,7 +185,7 @@ def new_pnr() -> str:
     return "".join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", k=6))
 
 
-def free_seat(flight_id: int, cabin_id: int) -> str:
+def free_seat(flight_id: int, cabin_id: int) -> str | None:
     taken = set(query_df("SELECT seat_number FROM mainline_carrier.ticket WHERE flight_id = %s",
                          (flight_id,))["seat_number"].dropna()) if flight_id else set()
     rows = range(1, 10) if cabin_id >= 3 else range(10, 39)
@@ -219,23 +225,32 @@ if target == "mainline_carrier":
             fl = flights.loc[flights["label"] == f_label].iloc[0]
             cab = cabins.loc[cabins["cabin_name"] == c_label].iloc[0]
             fare = round(float(fl["base_fare"]) * float(cab["fare_multiplier"]), 3)
-            seat = free_seat(int(fl["flight_id"]), int(cab["cabin_class_id"]))
             before = table_counts("mainline_carrier")
-            conn = get_pg_conn()
-            with conn.transaction():          # booking + ticket succeed or fail together
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO mainline_carrier.booking
-                              (booking_reference, passenger_id, booking_channel, payment_method, booking_status)
-                        VALUES (%s, %s, %s, %s, 'CONFIRMED') RETURNING booking_id, booking_reference""",
-                                (new_pnr(), pid, channel, payment))
-                    booking_id, ref = cur.fetchone()
-                    cur.execute("""
-                        INSERT INTO mainline_carrier.ticket
-                              (ticket_number, booking_id, flight_id, cabin_class_id, seat_number, fare_paid)
-                        VALUES (%s, %s, %s, %s, %s, %s) RETURNING ticket_id""",
-                                ("607-" + str(int(time.time() * 1000))[-10:], booking_id, int(fl["flight_id"]),
-                                 int(cab["cabin_class_id"]), seat, fare))
+            booking_id = ref = None
+            for _attempt in range(MAX_ATTEMPTS):
+                seat = free_seat(int(fl["flight_id"]), int(cab["cabin_class_id"]))
+                try:
+                    # private connection: booking + ticket succeed or fail together
+                    with new_pg_conn() as conn, conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO mainline_carrier.booking
+                                  (booking_reference, passenger_id, booking_channel, payment_method, booking_status)
+                            VALUES (%s, %s, %s, %s, 'CONFIRMED') RETURNING booking_id, booking_reference""",
+                                    (new_pnr(), pid, channel, payment))
+                        booking_id, ref = cur.fetchone()
+                        cur.execute("""
+                            INSERT INTO mainline_carrier.ticket
+                                  (ticket_number, booking_id, flight_id, cabin_class_id, seat_number, fare_paid)
+                            VALUES (%s, %s, %s, %s, %s, %s) RETURNING ticket_id""",
+                                    ("607-" + str(time.time_ns())[-10:], booking_id, int(fl["flight_id"]),
+                                     int(cab["cabin_class_id"]), seat, fare))
+                    break
+                except psycopg.errors.UniqueViolation:
+                    booking_id = None          # reference, ticket number or seat was just taken: try again
+            if booking_id is None:
+                st.error("That booking reference or seat was taken at the same moment. "
+                         "Nothing was saved - press **Create booking** again.")
+                st.stop()
             after = table_counts("mainline_carrier")
             st.session_state["last_booking"] = {
                 "schema": "mainline_carrier", "ref": ref, "before": before, "after": after,
@@ -264,31 +279,39 @@ else:
             c1, c2, c3 = st.columns(3)
             t_label = c1.selectbox("Traveler", travelers["label"])
             r_label = c2.selectbox("Route", routes["label"])
-            t_class = c3.selectbox("travel_class (free text)", ["Economy", "Premium Economy", "Business"])
+            t_class = c3.selectbox("travel_class (free text)", list(REGIONAL_CLASS_FACTOR))
             channel = c1.selectbox("Sales channel", ["Website", "Mobile", "Call Centre", "Travel Agent"])
             submitted = st.form_submit_button("Create reservation", type="primary")
 
         if submitted:
             tcode = travelers.loc[travelers["label"] == t_label, "traveler_code"].iloc[0]
             rt = routes.loc[routes["label"] == r_label].iloc[0]
-            mult = {"Economy": 1.0, "Premium Economy": 1.45, "Business": 2.6}[t_class]
-            fare = round(float(rt["fare_amount"]) * mult, 3)   # DENORMALISED copy of the route fare
+            # DENORMALISED: the route fare is COPIED into fare_line at sale time (x class factor)
+            fare = round(float(rt["fare_amount"]) * REGIONAL_CLASS_FACTOR[t_class], 3)
             before = table_counts("regional_partner")
-            conn = get_pg_conn()
-            with conn.transaction():
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO regional_partner.reservation
-                              (reservation_no, pnr, traveler_code, travel_class, reservation_status, sales_channel)
-                        SELECT coalesce(max(reservation_no), 900000000) + 1, %s, %s, %s, 'Confirmed', %s
-                        FROM regional_partner.reservation
-                        RETURNING reservation_no, pnr""", (new_pnr(), tcode, t_class, channel))
-                    res_no, ref = cur.fetchone()
-                    cur.execute("""
-                        INSERT INTO regional_partner.fare_line
-                              (reservation_no, route_id, fare_amount, tax_amount, currency, line_status)
-                        VALUES (%s, %s, %s, %s, 'BHD', 'active')""",
-                                (res_no, int(rt["route_id"]), fare, round(fare * 0.1, 3)))
+            res_no = ref = None
+            for _attempt in range(MAX_ATTEMPTS):
+                try:
+                    with new_pg_conn() as conn, conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO regional_partner.reservation
+                                  (reservation_no, pnr, traveler_code, travel_class, reservation_status, sales_channel)
+                            SELECT coalesce(max(reservation_no), 900000000) + 1, %s, %s, %s, 'Confirmed', %s
+                            FROM regional_partner.reservation
+                            RETURNING reservation_no, pnr""", (new_pnr(), tcode, t_class, channel))
+                        res_no, ref = cur.fetchone()
+                        cur.execute("""
+                            INSERT INTO regional_partner.fare_line
+                                  (reservation_no, route_id, fare_amount, tax_amount, currency, line_status)
+                            VALUES (%s, %s, %s, %s, 'BHD', 'active')""",
+                                    (res_no, int(rt["route_id"]), fare, round(fare * 0.1, 3)))
+                    break
+                except psycopg.errors.UniqueViolation:
+                    res_no = None              # another reservation took the same number: try again
+            if res_no is None:
+                st.error("Another reservation was saved at the same moment. "
+                         "Nothing was saved - press **Create reservation** again.")
+                st.stop()
             after = table_counts("regional_partner")
             st.session_state["last_booking"] = {
                 "schema": "regional_partner", "ref": ref, "before": before, "after": after,
