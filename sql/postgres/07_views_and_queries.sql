@@ -1,6 +1,6 @@
 -- =====================================================================
--- 07_views_and_queries.sql   (Abrar)
--- Non-trivial queries (brief: "min. 2 non-trivial queries, e.g. views,
+-- File   : sql/postgres/07_views_and_queries.sql   (Abrar - Member 1)
+-- Purpose: Non-trivial queries (brief: "min. 2 non-trivial queries, e.g. views,
 -- joins"). Saved as VIEWS so the dashboard can reuse them.
 --   Q1  mainline_carrier.v_on_time_performance_by_route  (multi-table join)
 --   Q2  regional_partner.v_revenue_per_cabin              (cleans free text)

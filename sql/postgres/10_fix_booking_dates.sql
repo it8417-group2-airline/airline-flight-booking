@@ -1,5 +1,5 @@
 -- =====================================================================
--- File   : 10_fix_booking_dates.sql   (Abrar - Member 1)
+-- File   : sql/postgres/10_fix_booking_dates.sql   (Abrar - Member 1)
 -- Purpose: Fix booking dates in the LIVE Supabase data.
 --   45 mainline bookings and 33 regional reservations were dated
 --   after the data snapshot (20 Nov 2026), i.e. "made in the future".

@@ -1,6 +1,6 @@
 -- =====================================================================
--- 05_crud_mainline_carrier.sql   (Abrar)
--- CRUD demonstration on the normalised mainline_carrier schema.
+-- File   : sql/postgres/05_crud_mainline_carrier.sql   (Abrar - Member 1)
+-- Purpose: CRUD demonstration on the normalised mainline_carrier schema.
 -- Run ONE section at a time in the Supabase SQL Editor
 -- (highlight the section, then Run) to see each result.
 -- The script creates a test passenger + booking, reads, updates and

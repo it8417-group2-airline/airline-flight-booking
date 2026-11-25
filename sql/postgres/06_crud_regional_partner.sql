@@ -1,6 +1,6 @@
 -- =====================================================================
--- 06_crud_regional_partner.sql   (Abrar)
--- CRUD demonstration on the denormalised regional_partner schema.
+-- File   : sql/postgres/06_crud_regional_partner.sql   (Abrar - Member 1)
+-- Purpose: CRUD demonstration on the denormalised regional_partner schema.
 -- Notice how the different structure changes the SQL compared with
 -- 05_crud_mainline_carrier.sql:
 --   * the text key 'TRV-xxxx' and the BIGINT reservation_no must be made by us
@@ -33,7 +33,8 @@ RETURNING reservation_no, pnr, travel_class;
 
 -- C3. Add a fare line for the next route that has not departed yet
 --     (route times are Bahrain local time, Supabase's clock is UTC). The fare is COPIED
---     from route.fare_amount into fare_line.fare_amount (denormalised).
+--     from route.fare_amount into fare_line.fare_amount (denormalised); Economy uses
+--     class factor 1.00 (Premium Economy 1.45, Business 2.60 - see 04 seed header).
 INSERT INTO regional_partner.fare_line
        (reservation_no, route_id, fare_amount, tax_amount, currency, seat_label, line_status)
 SELECT r.reservation_no, rt.route_id, rt.fare_amount, round(rt.fare_amount * 0.10, 3),

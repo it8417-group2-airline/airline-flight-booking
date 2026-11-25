@@ -1,5 +1,5 @@
 -- =====================================================================
--- File   : 08_update_flight_notes.sql   (Abrar - Member 1)
+-- File   : sql/postgres/08_update_flight_notes.sql   (Abrar - Member 1)
 -- Purpose: Give every flight its own disruption note.
 --   Before: 54 notes but only 28 different texts (one sentence repeated
 --   14 times), so the semantic search returned identical, tied results.
@@ -9,6 +9,8 @@
 --   python vector/embed_flight_notes.py --rebuild
 -- (03_mainline_carrier_seed.sql already contains the same notes, so a
 --  fresh rebuild from 01-04 does not need this file.)
+-- !! Already applied on Supabase. Do NOT run it again: it would undo the
+-- !! "Operated as planned" wording that 09_close_departed_flights.sql writes.
 -- =====================================================================
 
 UPDATE mainline_carrier.flight AS f
