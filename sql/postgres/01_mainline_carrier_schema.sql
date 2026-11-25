@@ -1,7 +1,14 @@
 -- =====================================================================
--- 01_mainline_carrier_schema.sql   (Member 1)
--- Schema 1 of 2: MAINLINE carrier - normalised (3NF), 6 tables.
--- Columns marked [ETL-DROP] are excluded by Member 2's Databricks ETL.
+-- File   : sql/postgres/01_mainline_carrier_schema.sql   (Abrar - Member 1)
+-- Purpose: Schema 1 of 2: MAINLINE carrier - normalised (3NF), 6 tables.
+--          Columns marked [ETL-DROP] are excluded by Member 2's Databricks ETL.
+--
+-- !! WARNING: running this file on Supabase DELETES the whole mainline_carrier
+-- !! schema (DROP SCHEMA ... CASCADE): all its data, the views of file 07 and
+-- !! the function close_departed_flights() of file 09. The embeddings table is
+-- !! kept and its foreign key to flight is restored at the end of this file.
+-- !! Only run it to rebuild from scratch, then follow the run order:
+-- !!   01 -> 02 -> 03 -> 04 -> 07 -> vector/01 -> 09   (see README.md)
 -- =====================================================================
 
 DROP SCHEMA IF EXISTS mainline_carrier CASCADE;
@@ -121,10 +128,31 @@ CREATE TRIGGER trg_booking_updated BEFORE UPDATE ON booking
 CREATE TRIGGER trg_ticket_updated BEFORE UPDATE ON ticket
   FOR EACH ROW EXECUTE FUNCTION mainline_carrier.set_updated_at();
 
-  -- Row Level Security: blocks Supabase's public API; our connection (table owner) is unaffected
+-- Row Level Security: blocks Supabase's public API (anon key). The table owner
+-- (our Supabase connection string) is not affected. A separate read-only login
+-- needs SELECT policies - see sql/postgres/11_read_only_role.sql (optional).
 ALTER TABLE airport     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cabin_class ENABLE ROW LEVEL SECURITY;
 ALTER TABLE passenger   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flight      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE booking     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ticket      ENABLE ROW LEVEL SECURITY;
+
+-- ---------------------------------------------------------------------
+-- Rebuild safety (audit I-1): DROP SCHEMA ... CASCADE above also dropped the
+-- foreign key from vector_store.flight_note_embeddings to flight. If the
+-- embeddings table already exists (re-run on Supabase), put the FK back.
+-- NOT VALID: existing embedding rows are not re-checked now (flight is empty
+-- until 03 runs); every new or changed row is checked as usual.
+-- ---------------------------------------------------------------------
+DO $$
+BEGIN
+  IF to_regclass('vector_store.flight_note_embeddings') IS NOT NULL THEN
+    ALTER TABLE vector_store.flight_note_embeddings
+      DROP CONSTRAINT IF EXISTS flight_note_embeddings_flight_id_fkey,
+      ADD  CONSTRAINT flight_note_embeddings_flight_id_fkey
+           FOREIGN KEY (flight_id) REFERENCES mainline_carrier.flight(flight_id)
+           ON DELETE CASCADE NOT VALID;
+    RAISE NOTICE 'Restored FK vector_store.flight_note_embeddings -> mainline_carrier.flight. Now re-run 03, 07 and 09.';
+  END IF;
+END $$;
