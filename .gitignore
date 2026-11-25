@@ -1,7 +1,17 @@
-# secrets - never upload these
-.streamlit/secrets.toml
-.env
+# secrets - never upload these (any folder: root, dashboard/, ...)
+**/.streamlit/secrets.toml
+**/.env
+.env.*
+!.env.example
 
 # python
 __pycache__/
+*.pyc
 .venv/
+venv/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
