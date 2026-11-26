@@ -265,7 +265,7 @@ erDiagram
 | `traveler_code` | `VARCHAR(10)` | NN, **FK** → `traveler` | |
 | `travel_class` | `VARCHAR(20)` | | one free-text field, no cabin table |
 | `reserved_at` | `TIMESTAMP` | NN, default now (Bahrain) | **Bahrain local**, always before the route |
-| `reservation_status` | `VARCHAR(15)` | NN | `Confirmed`, `confirmed`, `Flown`, `CANCELLED`, `cxl` |
+| `reservation_status` | `VARCHAR(15)` | NN | `Confirmed`, `confirmed`, `CONFIRMED`, `CANCELLED`, `Cancelled`, `Flown` |
 | `sales_channel` | `VARCHAR(20)` | | |
 | `checkin_kiosk_code` | `VARCHAR(10)` | | 🗑️ (named in the task division) |
 | `agent_terminal` | `VARCHAR(10)` | | 🗑️ |

@@ -11,7 +11,7 @@
 --   * country free text: 'Bahrain','bahrain','BAHRAIN','Kingdom of Bahrain','KSA','UK',NULL
 --   * city names with mixed casing / aliases ('Manama','MANAMA','Bahrain','Kuwait')
 --   * travel_class: 'Economy','ECONOMY','econ','Y','Business','Prem Econ',NULL ...
---   * reservation_status casing: 'Confirmed','confirmed','CANCELLED','cxl','Flown'
+--   * reservation_status casing: 'Confirmed','confirmed','CONFIRMED','CANCELLED','Cancelled','Flown'
 --   * fare_line currency 'BHD' / 'bhd' / 'USD'; some fares drift from route.fare_amount
 --   * fare_line 17 and 44 have NULL fare_amount; last 3 fare_line rows are exact duplicates
 -- DESIGN NOTES (not errors):
