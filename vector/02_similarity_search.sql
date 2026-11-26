@@ -26,7 +26,9 @@ WITH query AS (
 SELECT f.flight_number,
        f.origin_code || '-' || f.destination_code                                  AS route,
        f.flight_status,
-       GREATEST((EXTRACT(EPOCH FROM (f.actual_departure - f.scheduled_departure)) / 60)::int, 0)
+       CASE WHEN f.actual_departure IS NULL THEN NULL                              -- cancelled: no delay
+            ELSE GREATEST((EXTRACT(EPOCH FROM (f.actual_departure - f.scheduled_departure)) / 60)::int, 0)
+       END
                                                                                    AS delay_min,
        (SELECT count(*) FROM mainline_carrier.ticket t
         WHERE t.flight_id = f.flight_id AND t.ticket_status <> 'REFUNDED')         AS passengers,

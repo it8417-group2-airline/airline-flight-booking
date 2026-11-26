@@ -55,9 +55,10 @@ def main() -> None:
         print("No past flight within that distance. Raise --max-distance or rephrase.")
     for i, r in enumerate(rows, 1):
         rating = f"{r['avg_rating']}/5 ({r['review_count']} reviews)" if r["avg_rating"] is not None else "no reviews synced"
+        delay = "n/a" if r["delay_min"] is None else f"{r['delay_min']} min"   # cancelled flights have no delay
         print(f"{i}. {r['flight_number']}  {r['route']}  similarity={r['similarity']:.3f}")
         print(f"   {r['scheduled_departure']:%Y-%m-%d %H:%M}  status={r['flight_status']}  "
-              f"delay={r['delay_min']} min  passengers={r['passengers']}  revenue={r['revenue_bhd']} BHD  "
+              f"delay={delay}  passengers={r['passengers']}  revenue={r['revenue_bhd']} BHD  "
               f"rating={rating}")
         print(f"   [{r['source_type']}] {r['matched_text']}\n")
 

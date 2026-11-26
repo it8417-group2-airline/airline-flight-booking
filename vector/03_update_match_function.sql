@@ -59,7 +59,9 @@ LANGUAGE sql STABLE AS $$
          ao.city || ' (' || f.origin_code || ') -> ' || ad.city || ' (' || f.destination_code || ')',
          f.scheduled_departure,
          f.flight_status,
-         GREATEST((EXTRACT(EPOCH FROM (f.actual_departure - f.scheduled_departure)) / 60)::int, 0),  -- early = 0 min delay
+         CASE WHEN f.actual_departure IS NULL THEN NULL                            -- cancelled: no delay
+              ELSE GREATEST((EXTRACT(EPOCH FROM (f.actual_departure - f.scheduled_departure)) / 60)::int, 0)
+         END,                                                                    -- early = 0 min delay
          coalesce(ts.passengers, 0),
          coalesce(ts.bookings, 0),
          coalesce(ts.revenue_bhd, 0),
