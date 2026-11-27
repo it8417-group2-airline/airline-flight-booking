@@ -7,6 +7,7 @@ Brief requirements covered on this page
   * Interactive element: two-schema comparison toggle
   * Interactive element: "simulate new booking" (writes to either schema;
     gives Member 2's Sync now button a visible before/after change)
+Design: shared look from dashboard/ui.py (hero, section headers, chart colours) - logic unchanged.
 """
 from __future__ import annotations
 
@@ -17,12 +18,16 @@ import pandas as pd
 import psycopg
 import streamlit as st
 
+import ui
 from pg_utils import new_pg_conn, query_df, scalar
 
 st.set_page_config(page_title="Operational DB", page_icon="✈️", layout="wide")
-st.title("✈️ Operational database — PostgreSQL")
-st.caption("Live view of the two structurally different operational schemas on Supabase: "
-           "`mainline_carrier` (normalised) and `regional_partner` (denormalised).")
+ui.apply_theme()
+ui.hero("Operational database",
+        "Live view of the two structurally different operational schemas on Supabase: mainline_carrier "
+        "(normalised) and regional_partner (denormalised). Browse them, compare them, and write a real booking.",
+        eyebrow="Page 1 · Operational · Member 1", gold_chip="Supabase PostgreSQL",
+        chips=["mainline_carrier · 6 tables · 3NF", "regional_partner · 4 tables · denormalised", "Simulate new booking"])
 
 # regional_partner has no cabin table: fare_line.fare_amount = route.fare_amount x this
 # factor, copied at sale time (same factors as the seed data in 04 and mainline cabin_class)
@@ -58,6 +63,8 @@ def table_counts(schema: str) -> dict:
 # ---------------------------------------------------------------------------------------------
 # Two-schema comparison toggle
 # ---------------------------------------------------------------------------------------------
+ui.section("Explore the two schemas", "Look at one schema at a time, or compare both designs side by side.",
+           icon="🗄️")
 view = st.radio("Schema view", ["Mainline carrier", "Regional partner", "Compare both schemas"],
                 horizontal=True, key="schema_view")
 
@@ -100,7 +107,8 @@ if view in ("Mainline carrier", "Regional partner"):
             k1.metric("Flights flown", int(perf["flights_flown"].sum()))
             k2.metric("On-time %", f"{100 * perf['on_time_flights'].sum() / max(perf['flights_flown'].sum(), 1):.1f}%")
             k3.metric("Avg delay (min)", f"{perf['avg_delay_min'].mean():.1f}")
-            st.bar_chart(perf.set_index(label)["on_time_pct"], y_label="On-time %")
+            st.bar_chart(perf.set_index(label)["on_time_pct"], y_label="On-time %",
+                         color=ui.MAINLINE if schema == "mainline_carrier" else ui.REGIONAL)
             st.dataframe(perf, hide_index=True, width="stretch")
 
     with tab_query:
@@ -123,12 +131,13 @@ if view in ("Mainline carrier", "Regional partner"):
             st.markdown("**Revenue per cabin** — view `regional_partner.v_revenue_per_cabin`: `travel_class` is free "
                         "text, so it is normalised with `CASE`; USD lines are converted to BHD.")
             rev = to_float(query_df("SELECT * FROM regional_partner.v_revenue_per_cabin ORDER BY revenue_bhd DESC"))
-            st.bar_chart(rev.set_index("cabin")["revenue_bhd"], y_label="Revenue (BHD)")
+            st.bar_chart(rev.set_index("cabin")["revenue_bhd"], y_label="Revenue (BHD)", color=ui.REGIONAL)
             st.dataframe(rev, hide_index=True, width="stretch")
 
 else:
     # ------------------------------------------------------------------ comparison mode
-    st.subheader("Same business, two different designs")
+    ui.section("Same business, two different designs", "Equivalent entities in both schemas and how their structure differs.",
+               icon="⚖️")
     st.dataframe(ENTITY_MAP, hide_index=True, width="stretch")
 
     m, r = table_counts("mainline_carrier"), table_counts("regional_partner")
@@ -147,7 +156,8 @@ else:
     s1.dataframe(query_df(struct_sql, ("mainline_carrier", left)), hide_index=True, width="stretch")
     s2.dataframe(query_df(struct_sql, ("regional_partner", right)), hide_index=True, width="stretch")
 
-    st.subheader("Monthly ticket volume — mainline vs regional")
+    ui.section("Monthly ticket volume — mainline vs regional", "Tickets per flight month, read live from both schemas.",
+               icon="📈")
     vol = query_df("""
         SELECT month, carrier, count(*) AS tickets FROM (
           SELECT date_trunc('month', f.scheduled_departure)::date AS month, 'Mainline' AS carrier
@@ -159,9 +169,11 @@ else:
           WHERE lower(coalesce(fl.line_status,'')) <> 'void') x
         GROUP BY 1, 2 ORDER BY 1""")
     if not vol.empty:
-        st.bar_chart(vol.pivot(index="month", columns="carrier", values="tickets").fillna(0), stack=False)
+        monthly = vol.pivot(index="month", columns="carrier", values="tickets").fillna(0)
+        st.bar_chart(monthly, stack=False,
+                     color=[{"Mainline": ui.MAINLINE, "Regional": ui.REGIONAL}.get(c, ui.MUTED) for c in monthly.columns])
 
-    st.subheader("Customers who exist in both schemas")
+    ui.section("Customers who exist in both schemas", "The same people found in both airlines' data.", icon="👥")
     st.caption("Matched on lower(email) — these duplicates are merged into one dim_passenger row by the ETL.")
     st.dataframe(query_df("""
         SELECT p.passenger_id, p.first_name || ' ' || p.last_name AS mainline_name,
@@ -173,10 +185,8 @@ else:
 # ---------------------------------------------------------------------------------------------
 # Simulate new booking (writes to either schema)
 # ---------------------------------------------------------------------------------------------
-st.divider()
-st.header("🧾 Simulate a new booking")
-st.caption("Inserts a real booking in one transaction. Afterwards press **Sync now** on the Warehouse page "
-           "to see it arrive in Databricks (before/after).")
+ui.section("Simulate a new booking", "Inserts a real booking in one transaction. Afterwards press Sync now on the "
+           "Warehouse page to see it arrive in Databricks (before/after).", icon="🧾")
 
 target = st.radio("Write to", ["mainline_carrier", "regional_partner"], horizontal=True, key="sim_target")
 
@@ -333,3 +343,5 @@ if last:
     c1.dataframe(ba, width="stretch")
     c2.markdown("**New row(s)**")
     c2.dataframe(last["rows"], hide_index=True, width="stretch")
+
+ui.footer()

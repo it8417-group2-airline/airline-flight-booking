@@ -6,6 +6,7 @@ Brief requirements covered on this page
   * A working semantic-search box backed by pgvector         (Flow 6)
   * Results enriched with relational data (join back to mainline_carrier)
   * Button that runs the embedding pipeline for new/changed notes (Flow 5)
+Design: shared look from dashboard/ui.py (hero, section headers, result cards) - logic unchanged.
 """
 from __future__ import annotations
 
@@ -15,17 +16,22 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import ui
 from pg_utils import new_pg_conn, query_df, scalar
 
 # make the shared vector/ modules importable (repo_root/vector)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "vector"))
-from embeddings import embed_query, model_name, to_pgvector  # noqa: E402
+from embeddings import EMBED_DIM, embed_query, model_name, to_pgvector  # noqa: E402
 from embed_flight_notes import mongo_settings, run_embedding  # noqa: E402
 
 st.set_page_config(page_title="Semantic search", page_icon="🔎", layout="wide")
-st.title("🔎 Semantic search over flight disruption notes")
-st.caption("Free text → embedding (1536-d) → cosine-distance search in pgvector → "
-           "results joined back to `mainline_carrier` for route, delay, passengers, revenue and rating.")
+ui.apply_theme()
+ui.hero("Semantic search",
+        "Describe a disruption in plain words: the text becomes a 1536-d embedding, pgvector finds the closest past "
+        "flight notes by cosine distance, and each result is joined back to mainline_carrier for route, delay, "
+        "passengers, revenue and rating.",
+        eyebrow="Page 4 · Semantic search · Member 1", gold_chip="pgvector · Flows 5 and 6",
+        chips=["vector_store.flight_note_embeddings", "HNSW cosine index", f"Model · {model_name()}"])
 
 EXAMPLES = [
     "flight delayed by weather at a connecting hub",
@@ -37,6 +43,8 @@ EXAMPLES = [
 ]
 
 # ------------------------------------------------------------------ status + Flow 5 button
+ui.section("Embedding status", "How many flight notes are stored as vectors, and how many still need embedding.",
+           icon="🧠")
 c1, c2, c3, c4 = st.columns(4)
 with_notes = scalar("SELECT count(*) FROM mainline_carrier.flight WHERE notes IS NOT NULL AND btrim(notes) <> ''")
 embedded = scalar("SELECT count(DISTINCT flight_id) FROM vector_store.flight_note_embeddings "
@@ -49,7 +57,7 @@ stale = scalar("""SELECT count(*) FROM mainline_carrier.flight f
 c1.metric("Flights with notes", with_notes)
 c2.metric("Embedded", embedded)
 c3.metric("New / changed, not embedded", stale)
-c4.metric("Embedding model", model_name())
+c4.metric(f"Model · {model_name()}", f"{EMBED_DIM}-d", help="Each note is stored as a vector of this many numbers")
 # Vectors from different models cannot be compared, so warn if any stored vector used another model
 other_models = scalar("SELECT count(*) FROM vector_store.flight_note_embeddings WHERE model_name <> %s", (model_name(),))
 if other_models:
@@ -80,9 +88,8 @@ with st.expander("⚙️ Flow 5 — embed new or changed notes"):
             st.code("\n".join(log))
             st.success(f"Embedded {result['embedded']} text(s); table now holds {result['total']} vectors.")
 
-st.divider()
-
 # ------------------------------------------------------------------ search box (Flow 6)
+ui.section("Search past disruptions", "Pick an example or type your own description, then press Search.", icon="🔎")
 if "search_text" not in st.session_state:
     st.session_state.search_text = EXAMPLES[0]
 
@@ -127,7 +134,8 @@ if results is not None:
         results = results.copy()
         for c in ("similarity", "cosine_distance", "revenue_bhd", "avg_rating"):
             results[c] = pd.to_numeric(results[c], errors="coerce")
-        st.subheader(f"Top {len(results)} similar past flights")
+        ui.section(f"Top {len(results)} similar past flights", "Ranked by cosine similarity (1.000 = identical meaning).",
+                   icon="🛬")
         st.dataframe(
             results[["flight_number", "route", "scheduled_departure", "flight_status", "delay_min",
                      "passengers", "revenue_bhd", "avg_rating", "review_count", "similarity", "matched_text"]],
@@ -144,7 +152,7 @@ if results is not None:
         for i, r in results.iterrows():
             rating = f"⭐ {r['avg_rating']:.2f} ({int(r['review_count'])} reviews)" if pd.notna(r["avg_rating"]) \
                 else "no MongoDB reviews synced yet"
-            with st.container(border=True):
+            with ui.card_container(f"result_{i}"):
                 st.markdown(f"**{i + 1}. {r['flight_number']} · {r['route']}** — similarity **{r['similarity']:.3f}**")
                 st.markdown(f"> {r['matched_text']}")
                 st.caption(f"{r['flight_status']} · delay {r['delay_min'] if pd.notna(r['delay_min']) else '—'} min · "
@@ -158,3 +166,5 @@ if results is not None:
                 "--    only flights that already departed (scheduled_departure < now())\n"
                 "-- 2) keep best match per flight\n"
                 "-- 3) JOIN mainline_carrier.flight, airport, ticket  (enrichment)", language="sql")
+
+ui.footer()

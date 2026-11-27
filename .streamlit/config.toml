@@ -1,0 +1,22 @@
+# Shared theme for every dashboard page (added by Fatema, Member 2).
+# Light "daytime sky" look in the README banner's colours: navy text, sky blue, teal, gold sun.
+# Extra styling (hero banner, KPI cards, section headers) lives in dashboard/ui.py.
+# Needs Streamlit 1.50 or newer (see requirements.txt).
+
+[theme]
+base = "light"
+primaryColor = "#1F5FAF"
+backgroundColor = "#F6F8FC"
+secondaryBackgroundColor = "#EAF0F8"
+textColor = "#0B1F3A"
+linkColor = "#1F5FAF"
+borderColor = "#DCE4EF"
+showWidgetBorder = true
+baseRadius = "medium"
+font = "sans-serif"
+# chart series order: mainline gold, regional teal, then 3 extras (colour-blind safety checked in this order)
+chartCategoricalColors = ["#C2841A", "#0F86A0", "#D6407F", "#7C5CE0", "#14903A"]
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EEF3FA"
