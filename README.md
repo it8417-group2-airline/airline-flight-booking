@@ -80,7 +80,7 @@ An airline sells seats on its own **mainline** flights and through a **regional 
 |---|---|---|---|
 | 📊 **Streamlit dashboard** | the app link in the Moodle access note | no login needed | pages 1–4; every page reads live data |
 | 🐘 **Supabase** (PostgreSQL + pgvector) | [supabase.com/dashboard](https://supabase.com/dashboard) | group account | **Table Editor** → schemas `mainline_carrier`, `regional_partner`, `vector_store` · **SQL Editor** → the checks below |
-| 🧱 **Databricks** | workspace link in the Moodle access note | group account | warehouse schemas, star schema tables, ETL notebooks |
+| 🧱 **Databricks** | workspace link in the Moodle access note | group account | **Catalog** → `workspace` → `airline_bronze` / `airline_staging` / `airline_gold` · **Jobs & Pipelines** → `airline_etl_flow1` · **Workspace** → Git folder `databricks/` · **SQL Editor** → the checks in [the warehouse section](#-analytical-role-databricks-warehouse) |
 | 🍃 **MongoDB Atlas** | [cloud.mongodb.com](https://cloud.mongodb.com) | group account | collections `passenger_feedback`, `baggage_events` |
 | 🐙 **GitHub** | [this repository](https://github.com/it8417-group2-airline/airline-flight-booking) | public | code and [commit history per member](https://github.com/it8417-group2-airline/airline-flight-booking/commits/main) |
 
@@ -134,6 +134,12 @@ url = "postgresql://postgres.<project-ref>:<db-password>@aws-1-<region>.pooler.s
 
 [embeddings]
 GEMINI_API_KEY = "<gemini-api-key>"
+
+[databricks]                      # page 2 (warehouse); only the token is secret
+host      = "dbc-6128b67f-20a8.cloud.databricks.com"
+http_path = "/sql/1.0/warehouses/64e0559336604ed6"
+token     = "<databricks-personal-access-token>"   # scopes: sql + jobs
+job_id    = 70626669880455
 ```
 
 **Start the dashboard from the repository root**, so Streamlit finds `.streamlit/secrets.toml`:
@@ -296,22 +302,36 @@ A live Streamlit app, not a static report: every page queries the databases on e
 |---|---|
 | View into the operational database, **both schemas** | Page 1: browse tables, on-time views, business queries |
 | Working **semantic-search box** with relational enrichment | Page 4 |
-| **"Sync now"** with before/after | Page 2 (Member 2); a booking made on page 1 is the visible change |
-| **≥ 2 further interactive elements** | Page 1: two-schema comparison toggle, "simulate a new booking" form (writes to either schema). Page 4: Flow 5 "run embedding pipeline" button. Page 3: review form (Member 3) |
+| **"Sync now"** with before/after | Page 2: runs the Databricks Job `airline_etl_flow1` through the Jobs API, follows its 4 tasks live, then shows bronze, staging and `fact_ticket` counts and the charts **before and after**. A booking made on page 1 is the visible change |
+| **≥ 2 further interactive elements** | Page 1: two-schema comparison toggle, "simulate a new booking" form (writes to either schema). Page 2: carrier filter (mainline only / regional only / combined). Page 4: Flow 5 "run embedding pipeline" button. Page 3: review form (Member 3) |
 | View into MongoDB (imported + extended data) | Page 3 (Member 3) |
-| View into the warehouse | Page 2 (Member 2) |
+| View into the warehouse | Page 2: KPI summary, bronze → staging → gold pipeline, on-time chart, ticket volumes, revenue by route, top passengers, fare reconciliation |
+
+<p align="center"><img src="docs/assets/screenshot-home.png" width="100%" alt="Home page: sidebar navigation, the four live pages and the seven data flows"><br>
+<sub><b>Home</b>: sidebar navigation, the four live pages and the seven data flows</sub></p>
 
 <table>
+<tr><th colspan="2" align="left">📄 Page 1 · Operational data (Member 1)</th></tr>
 <tr>
-<td width="50%"><img src="docs/assets/screenshot-op_overview.png" alt="Page 1: live row counts and table browser for mainline_carrier"><br><sub><b>Page 1 · Operational</b>: live counts, structure and rows of every table</sub></td>
+<td width="50%"><img src="docs/assets/screenshot-op_overview.png" alt="Page 1: live row counts and table browser for mainline_carrier"><br><sub><b>Both schemas live</b>: row counts and the table browser</sub></td>
 <td width="50%"><img src="docs/assets/screenshot-op_compare.png" alt="Page 1: two-schema comparison toggle"><br><sub><b>Two-schema comparison toggle</b>: same entities, different designs</sub></td>
 </tr>
 <tr>
+<td width="50%"><img src="docs/assets/screenshot-op_performance.png" alt="Page 1: on-time performance per route chart"><br><sub><b>On-time performance view</b>: <code>v_on_time_performance_by_route</code> as KPIs and a chart</sub></td>
 <td width="50%"><img src="docs/assets/screenshot-op_booking.png" alt="Page 1: simulate a new booking with before/after row counts"><br><sub><b>Simulate a new booking</b>: one transaction, before / after counts</sub></td>
-<td width="50%"><img src="docs/assets/screenshot-search_page.png" alt="Page 4: semantic search with Flow 5 embedding status"><br><sub><b>Page 4 · Semantic search</b>: embedding status, Flow 5 button, search box</sub></td>
+</tr>
+<tr><th colspan="2" align="left">📄 Page 2 · Data warehouse (Member 2)</th></tr>
+<tr>
+<td width="50%"><img src="docs/assets/screenshot-wh_overview.png" alt="Page 2: star schema KPIs and the bronze to gold pipeline"><br><sub><b>Star schema KPIs</b> and the bronze → staging → gold pipeline</sub></td>
+<td width="50%"><img src="docs/assets/screenshot-wh_sync.png" alt="Page 2: Sync now before and after counts with the new ticket"><br><sub><b>Sync now</b>: the page-1 booking arrives (bronze +2, staging +1, <code>fact_ticket</code> +1)</sub></td>
 </tr>
 <tr>
-<td colspan="2"><img src="docs/assets/screenshot-op_performance.png" alt="Page 1: on-time performance per route chart"><br><sub><b>On-time performance view</b>: <code>v_on_time_performance_by_route</code> as KPIs and a chart</sub></td>
+<td colspan="2"><img src="docs/assets/screenshot-wh_charts.png" alt="Page 2: on-time chart before and after the sync, and on-time performance per airline"><br><sub><b>On-time performance chart</b>: before vs after the sync, and per airline (<code>v_on_time_by_carrier_month</code>)</sub></td>
+</tr>
+<!-- Page 3 · Passenger feedback (Member 3): add its screenshots here, in the same style -->
+<tr><th colspan="2" align="left">📄 Page 4 · Semantic search (Member 1)</th></tr>
+<tr>
+<td colspan="2"><img src="docs/assets/screenshot-search_page.png" alt="Page 4: embedding status, Flow 5 button and semantic search results"><br><sub><b>Semantic search</b>: embedding status, Flow 5 button, and results enriched with route, delay, passengers and revenue</sub></td>
 </tr>
 </table>
 
@@ -321,7 +341,97 @@ A live Streamlit app, not a static report: every page queries the databases on e
 
 ## 🧱 Analytical role: Databricks warehouse
 
-*Member 2.* Extracts **both** PostgreSQL schemas into **bronze**, then builds a typed, cleansed and reconciled **staging** layer and a **star schema** (at least 1 fact table and 3 dimensions, including `dim_date`). The transformation removes duplicates (including people who exist in both schemas), handles missing and inconsistent values with before/after row counts, drops the columns marked `[ETL-DROP]`, and maps the two schemas into one merged structure. The **"Sync now"** button on page 2 runs the incremental refresh, using the watermark columns documented in [docs/schema_design.md](docs/schema_design.md#notes-for-member-2-etl--databricks).
+*Member 2.* **Flow 1** copies **both** operational schemas from Supabase into Databricks and turns them into **one star schema** in three layers (bronze → staging → gold). The notebooks are in [`databricks/`](databricks/) and run in Databricks from a Git folder. The Job **`airline_etl_flow1`** chains them, and the **Sync now** button on dashboard page 2 starts that Job.
+
+| Layer | Databricks schema | What happens | Notebook |
+|---|---|---|---|
+| 🥉 Bronze | `workspace.airline_bronze` | all 10 operational tables copied as **raw text**, tagged with `source_system`, `source_table`, `_run_id` and `_extracted_at`; row counts checked against the source | [`01_extract_bronze.py`](databricks/01_extract_bronze.py) |
+| 🥈 Staging | `workspace.airline_staging` | typed, cleansed and reconciled `stg_*` tables; every step logged with **before / after row counts** in `etl_audit`; every dropped column listed with its reason in `etl_column_exclusions` | [`02_staging.py`](databricks/02_staging.py) |
+| 🥇 Gold | `workspace.airline_gold` | star schema `fact_ticket` + `dim_passenger`, `dim_flight`, `dim_date`, `dim_carrier`, `dim_cabin`, with primary / foreign keys and integrity checks | [`03_gold.py`](databricks/03_gold.py) |
+| 📊 Analytics | `workspace.airline_gold` | 5 analytical views (Q1–Q5), used by dashboard page 2 | [`04_analytical_queries.sql`](databricks/04_analytical_queries.sql) |
+
+Shared rules and helpers are in [`_etl_common.py`](databricks/_etl_common.py). [`00_connectivity_test.py`](databricks/00_connectivity_test.py) proves that Databricks can reach Supabase **and that it cannot write to it**.
+
+**Safe by design.** Databricks reads Supabase with the read-only role `etl_reader` ([`11_read_only_role.sql`](sql/postgres/11_read_only_role.sql)) inside a read-only transaction, so the ETL can never change the operational data. The connection string is stored in the Databricks secret scope `airline`, never in code or GitHub.
+
+**Cleansing (staging).**
+- **Duplicates:** exact duplicate fare lines are removed. The same person found twice, or in both schemas, becomes **one** passenger (matched on lower-cased email, then name + date of birth; the mainline record wins, otherwise the oldest). `stg_passenger_xref` links every source record to the merged person.
+- **NULLs and inconsistent values:** names title-cased, emails lower-cased, city names mapped to IATA codes, four date-of-birth formats parsed, a missing cabin inferred from the fare (within 5 %), a missing fare rebuilt as route fare × cabin multiplier.
+- **Dates and currency:** all times in Bahrain time (UTC+3); overnight regional arrivals moved to the next day; USD fares converted to BHD at 0.376.
+- **Business rules:** one live seat per person per flight (the earliest booking is kept), and orphan tickets are rejected. A page-2 Sync shows any new ticket that a rule stopped, with the reason.
+- **Column exclusion:** 21 source columns are left out (at least 2 per table, including `crew_manifest_ref` and `checkin_kiosk_code`), each with a one-line justification.
+
+**Reconciliation.** `stg_booking` and `stg_passenger` merge the mainline `booking` / `passenger` tables with the regional `reservation` / `traveler` tables. Regional `travel_class` is mapped onto the mainline cabin model. Every regional `fare_line` is checked against route fare × cabin factor (±0.5 %, else `DRIFT`). Every mainline fare is checked against its 0.90–1.15 pricing band (else `OUT_OF_BAND`).
+
+**Star schema.** Grain of `fact_ticket`: **one row per ticket, which is one passenger seat on one flight segment**. Booking reference, status, channel and payment method are kept on the fact as degenerate dimensions. `dim_date` is used twice, as booking date and flight date. Measures are `fare_bhd`, `tax_bhd`, `revenue_bhd` (0 for refunded, void and cancelled tickets) and `ticket_count`.
+
+<p align="center"><img src="docs/assets/erd-warehouse.png" width="88%" alt="ERD of the warehouse star schema: fact_ticket in the centre with dim_passenger, dim_date (used twice), dim_flight, dim_carrier and dim_cabin"></p>
+
+<details>
+<summary><b>📐 Operational design vs warehouse design</b> (full ERD of the two source schemas: <a href="docs/assets/erd-operational.png">erd-operational.png</a>)</summary>
+
+<br>
+
+| | Operational (Supabase, 2 schemas) | Warehouse (Databricks star schema) |
+|---|---|---|
+| **Built for** | running bookings: many small inserts and updates (OLTP) | analysis: large reads, joins and aggregates (OLAP) |
+| **Structure** | 10 tables: `mainline_carrier` in 3NF, `regional_partner` denormalised | 1 fact table + 5 dimensions |
+| **Keys** | different per schema (`SERIAL` ids vs text codes such as `TRV-0001`) | surrogate keys; source ids kept as `ticket_nk` / `flight_nk` |
+| **People** | the same person can exist twice, or in both schemas | one `dim_passenger` row per real person |
+| **Flights** | `flight` + `airport` vs `route` with city names | one `dim_flight`, airport details folded in |
+| **Cabins** | `cabin_class` table vs free-text `travel_class` | one `dim_cabin`; the text is mapped onto the cabin model |
+| **Time and money** | `TIMESTAMPTZ` vs local / UTC `TIMESTAMP`; BHD and USD | Bahrain time; BHD everywhere; `dim_date` for calendar analysis |
+| **Columns** | includes personal and technical columns | 21 columns left out (privacy, no analytical value) |
+
+</details>
+
+| | Analytical query (view) | Question it answers |
+|---|---|---|
+| Q1 | `v_on_time_by_carrier_month` | on-time departures (≤ 15 min late) per airline and month |
+| Q2 | `v_revenue_by_route_cabin` | revenue and average fare per route and cabin |
+| Q3 | `v_top_passengers` | most frequent travellers across **both** airlines |
+| Q4 | `v_ticket_volume_by_carrier_month` | revenue tickets per airline and month (behind the carrier filter) |
+| Q5 | `v_fare_reconciliation` | how many fares match the shared fare model, drifted, or were imputed |
+
+**Refresh strategy.**
+
+| | |
+|---|---|
+| **Job** | `airline_etl_flow1`: `extract_bronze` → `staging` → `gold` → `analytics`, on serverless compute, one run at a time (about 3 minutes) |
+| **On demand** | **Sync now** on page 2 calls the Jobs API (`run-now`), follows the run, then compares the warehouse before and after |
+| **Nightly** | the same Job also runs on a schedule every night at 03:30 Bahrain time, so the warehouse is never more than a day old (page 2 shows the schedule live) |
+| **Full reload** | every layer is rebuilt from the source on each run, so inserts, updates **and deletes** are always in step. Hard deletes are not tracked in the source, and the data is small, so this is simpler and safer than an incremental load |
+| **Scale-up option** | incremental loads using the `updated_at` / `last_modified` watermark columns plus a periodic delete reconcile ([notes](docs/schema_design.md#notes-for-member-2-etl--databricks)) |
+
+<details>
+<summary><b>🧱 Two-minute check of the warehouse</b> (paste into the Databricks SQL Editor)</summary>
+
+<br>
+
+```sql
+-- 1. Star schema row counts
+SELECT 'fact_ticket' AS table_name, count(*) AS row_count FROM workspace.airline_gold.fact_ticket
+UNION ALL SELECT 'dim_passenger', count(*) FROM workspace.airline_gold.dim_passenger
+UNION ALL SELECT 'dim_flight',    count(*) FROM workspace.airline_gold.dim_flight
+UNION ALL SELECT 'dim_date',      count(*) FROM workspace.airline_gold.dim_date
+UNION ALL SELECT 'dim_carrier',   count(*) FROM workspace.airline_gold.dim_carrier
+UNION ALL SELECT 'dim_cabin',     count(*) FROM workspace.airline_gold.dim_cabin;
+
+-- 2. Cleansing audit of the latest run: before / after counts for every step
+SELECT layer, table_name, step, rows_before, rows_after, rows_removed, note
+FROM workspace.airline_staging.etl_audit
+WHERE run_id = (SELECT max(run_id) FROM workspace.airline_staging.etl_audit)
+ORDER BY layer, table_name, step;
+
+-- 3. Columns left out of the warehouse, and why
+SELECT source_table, column_name, reason FROM workspace.airline_staging.etl_column_exclusions
+ORDER BY source_table, column_name;
+
+-- 4. An analytical query: on-time performance per airline and month
+SELECT * FROM workspace.airline_gold.v_on_time_by_carrier_month ORDER BY year_month, carrier_name;
+```
+
+</details>
 
 ## 🍃 NoSQL role: MongoDB Atlas
 
@@ -334,11 +444,22 @@ A live Streamlit app, not a static report: every page queries the databases on e
 ```text
 airline-flight-booking/
 ├── dashboard/                     Streamlit app (Flow 7)
-│   ├── app.py                     home page (temporary, replaced by Member 3's shell)
+│   ├── app.py                     sidebar navigation + home page
+│   ├── ui.py                      shared design: banner, KPI cards, section headers, colours
 │   ├── pg_utils.py                PostgreSQL connections: shared read + private write
+│   ├── dbx_utils.py               Databricks SQL warehouse + Jobs API (page 2)
+│   ├── assets/                    logo
 │   └── pages/
 │       ├── 1_Operational.py       both schemas · comparison toggle · simulate booking
+│       ├── 2_Warehouse.py         star schema views · Sync now · carrier filter
 │       └── 4_Semantic_Search.py   pgvector search · Flow 5 button
+├── databricks/                    analytical role (Flow 1), a Git folder in Databricks
+│   ├── 00_connectivity_test.py    Supabase reachable, read-only
+│   ├── _etl_common.py             shared cleansing rules and helpers
+│   ├── 01_extract_bronze.py       both schemas → bronze (raw text + source_system)
+│   ├── 02_staging.py              cleansing, column exclusion, reconciliation, audit
+│   ├── 03_gold.py                 star schema, keys, integrity checks
+│   └── 04_analytical_queries.sql  5 analytical views (Q1–Q5)
 ├── sql/postgres/                  operational role (run order above)
 │   ├── 01_mainline_carrier_schema.sql      normalised schema, 6 tables
 │   ├── 02_regional_partner_schema.sql      denormalised schema, 4 tables
@@ -361,13 +482,14 @@ airline-flight-booking/
 │   └── similarity_search.py       Flow 6 CLI
 ├── docs/
 │   ├── schema_design.md           column-level design, contracts, ETL notes
-│   └── assets/                    README artwork and screenshots
+│   └── assets/                    README artwork, screenshots and ERDs
+├── .streamlit/config.toml         shared light theme for every page
 ├── .streamlit/secrets.toml.example
 ├── .env.example
 └── requirements.txt
 ```
 
-Members 2 and 3 add their own folders (warehouse notebooks, `mongodb/` scripts) and dashboard pages 2 and 3.
+Member 3 adds the `mongodb/` scripts and dashboard page 3 (any `pages/3_*.py` file appears in the sidebar and on the home page automatically).
 
 ---
 
